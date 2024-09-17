@@ -1,44 +1,45 @@
 import streamlit as st
 import pandas as pd
-import mysql.connector
+from sqlalchemy import create_engine
 import datetime
-
 
 st.set_page_config(layout="wide")
 
 # Константа для смещения времени
 TIME_OFFSET = datetime.timedelta(hours=3)
 
-def init_connection():
-    return mysql.connector.connect(
-        host="185.120.57.125",
-        user="admin",
-        password="v8S7b$82j51d1",
-        database="crypto"
+def init_engine():
+    return create_engine(
+        "mysql+mysqlconnector://admin:v8S7b$82j51d1@185.120.57.125/crypto",
+        pool_pre_ping=True
     )
 
-def get_connection():
-    if 'conn' not in st.session_state:
-        st.session_state.conn = init_connection()
-    return st.session_state.conn
+def get_engine():
+    if 'engine' not in st.session_state:
+        st.session_state.engine = init_engine()
+    return st.session_state.engine
 
 @st.cache_data(ttl=5*60)
-def fetch_data(_conn, date_from=None, date_to=None):
-    query = """
-    SELECT 
-        *
-    FROM ray_solana_parser
-    """
+def fetch_data(engine, date_from=None, date_to=None):
+    try:
+        query = """
+        SELECT 
+            *
+        FROM ray_solana_parser
+        """
 
-    if date_from and date_to:
-        query += " WHERE DATE BETWEEN %s AND %s"
-        query += " ORDER BY DATE desc"
-        df = pd.read_sql(query, _conn, params=[date_from, date_to])
-    else:
-        query += " ORDER BY DATE desc"
-        df = pd.read_sql(query, _conn)
-    
-    return df
+        if date_from and date_to:
+            query += " WHERE DATE BETWEEN %s AND %s"
+            query += " ORDER BY DATE DESC"
+            df = pd.read_sql(query, engine, params=[date_from, date_to])
+        else:
+            query += " ORDER BY DATE DESC"
+            df = pd.read_sql(query, engine)
+        
+        return df
+    except Exception as e:
+        st.error(f"Ошибка при получении данных: {e}")
+        return pd.DataFrame()  # Возвращаем пустой DataFrame в случае ошибки
 
 def create_summary_table(df):
     buys = df[['received_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
@@ -126,13 +127,11 @@ def main():
     if st.sidebar.button("Последние 2 часа"):
         start_date, end_date = get_last_2_hours_range()
         update_date_range(start_date, end_date)
-        #st.rerun()
         
     if st.sidebar.button("Последние 6 часов"):
         end_date = get_current_time_with_offset()
         start_date = end_date - datetime.timedelta(hours=6)
         update_date_range(start_date, end_date)
-        #st.rerun()
     if st.sidebar.button("Последние 24 часа"):
         end_date = get_current_time_with_offset()
         start_date = end_date - datetime.timedelta(hours=25)
@@ -167,8 +166,8 @@ def main():
         st.session_state.date_range = [date_from, date_to]
 
     if date_from and date_to:
-        conn = get_connection()
-        df = fetch_data(conn, date_from, date_to)
+        engine = get_engine()
+        df = fetch_data(engine, date_from, date_to)
 
         st.subheader(f"Сводная информация по монетам с {date_from} по {date_to}")
         summary_df = create_summary_table(df)
@@ -203,8 +202,9 @@ def main():
                 column_config={
                     "wallet_address": "Кошелек",
                     "wallet_link": st.column_config.LinkColumn(
-                    label="Анализ кошелька", 
-                    display_text="Link",),
+                        label="Анализ кошелька", 
+                        display_text="Link",
+                    ),
                     "unique_buy_transactions": "Уникальные покупки",
                     "buy_volume": "Объем покупок",
                     "unique_sell_transactions": "Уникальные продажи",
