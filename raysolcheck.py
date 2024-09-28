@@ -43,6 +43,7 @@ def fetch_data(_date_from=None, _date_to=None):
         return pd.DataFrame()  # Return an empty DataFrame on error
 
 
+
 def create_summary_table(df):
     buys = df[['received_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
         'received_currency': 'coin',
