@@ -25,7 +25,8 @@ def fetch_data(engine, date_from=None, date_to=None):
         query = """
         SELECT 
             *
-        FROM ray_solana_parser
+        FROM ray_solana_parser 
+        where received_currency is not NULL
         """
 
         if date_from and date_to:
