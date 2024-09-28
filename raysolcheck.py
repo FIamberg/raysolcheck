@@ -19,10 +19,9 @@ def get_engine():
         st.session_state.engine = init_engine()
     return st.session_state.engine
 
-@st.cache_data
-def fetch_data(date_from=None, date_to=None):
-    # Initialize engine inside the function to avoid unhashable errors
-    engine = get_engine()
+@st.cache_data(ttl=5*60)
+def fetch_data(_date_from=None, _date_to=None):
+    engine = get_engine()  # Initialize the engine inside the function
     
     try:
         query = """
@@ -30,10 +29,10 @@ def fetch_data(date_from=None, date_to=None):
             *
         FROM ray_solana_parser
         """
-        if date_from and date_to:
+        if _date_from and _date_to:
             query += " WHERE DATE BETWEEN %s AND %s"
             query += " ORDER BY DATE DESC"
-            df = pd.read_sql(query, engine, params=[date_from, date_to])
+            df = pd.read_sql(query, engine, params=[_date_from, _date_to])
         else:
             query += " ORDER BY DATE DESC"
             df = pd.read_sql(query, engine)
@@ -41,7 +40,8 @@ def fetch_data(date_from=None, date_to=None):
         return df
     except Exception as e:
         st.error(f"Ошибка при получении данных: {e}")
-        return pd.DataFrame()  # Возвращаем пустой DataFrame в случае ошибки
+        return pd.DataFrame()  # Return an empty DataFrame on error
+
 
 def create_summary_table(df):
     buys = df[['received_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
