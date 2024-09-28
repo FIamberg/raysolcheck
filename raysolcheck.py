@@ -42,8 +42,6 @@ def fetch_data(_date_from=None, _date_to=None):
         st.error(f"Ошибка при получении данных: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
 
-
-
 def create_summary_table(df):
     buys = df[['received_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
         'received_currency': 'coin',
@@ -122,10 +120,11 @@ def get_last_2_hours_range():
 def main():
     st.title("Solana Parser Dashboard")
 
-    # Инициализация date_range последними 2 часами по умолчанию
+    # Initialize date_range with the last 2 hours by default
     if 'date_range' not in st.session_state:
         st.session_state.date_range = get_last_2_hours_range()
 
+    # Sidebar for date selection
     st.sidebar.subheader("Быстрый выбор дат")
     if st.sidebar.button("Последние 2 часа"):
         start_date, end_date = get_last_2_hours_range()
@@ -137,40 +136,41 @@ def main():
         update_date_range(start_date, end_date)
     if st.sidebar.button("Последние 24 часа"):
         end_date = get_current_time_with_offset()
-        start_date = end_date - datetime.timedelta(hours=25)
+        start_date = end_date - datetime.timedelta(hours=24)
         update_date_range(start_date, end_date)
     if st.sidebar.button("Последние 3 дня"):
         end_date = get_current_time_with_offset()
-        start_date = end_date - datetime.timedelta(days=3, hours=1)
+        start_date = end_date - datetime.timedelta(days=3)
         update_date_range(start_date, end_date)
     if st.sidebar.button("Последние 7 дней"):
         end_date = get_current_time_with_offset()
-        start_date = end_date - datetime.timedelta(days=7, hours=1)
+        start_date = end_date - datetime.timedelta(days=7)
         update_date_range(start_date, end_date)
     if st.sidebar.button("Текущий месяц"):
         end_date = get_current_time_with_offset()
-        start_date = end_date.replace(day=1, hour=0, minute=0, second=0) - datetime.timedelta(hours=1)
+        start_date = end_date.replace(day=1, hour=0, minute=0, second=0)
         update_date_range(start_date, end_date)
     if st.sidebar.button("Все время"):
         end_date = get_current_time_with_offset()
         start_date = datetime.datetime(2000, 1, 1)
         update_date_range(start_date, end_date)
 
+    # Date inputs
     date_from = st.sidebar.date_input("Начальная дата", st.session_state.date_range[0])
     date_to = st.sidebar.date_input("Конечная дата", st.session_state.date_range[1])
-
     time_from = st.sidebar.time_input("Время начала", st.session_state.date_range[0].time())
     time_to = st.sidebar.time_input("Время окончания", st.session_state.date_range[1].time())
 
     date_from = datetime.datetime.combine(date_from, time_from)
     date_to = datetime.datetime.combine(date_to, time_to)
 
+    # Update session state if date range is modified
     if date_from != st.session_state.date_range[0] or date_to != st.session_state.date_range[1]:
         st.session_state.date_range = [date_from, date_to]
 
     if date_from and date_to:
-        engine = get_engine()
-        df = fetch_data(engine, date_from, date_to)
+        # Call fetch_data with only the date range parameters
+        df = fetch_data(date_from, date_to)
 
         st.subheader(f"Сводная информация по монетам с {date_from} по {date_to}")
         summary_df = create_summary_table(df)
@@ -221,7 +221,6 @@ def main():
             st.dataframe(filtered_df, use_container_width=True)
         else:
             st.warning("Пожалуйста, выберите хотя бы одну монету для отображения детальной информации.")
-
     else:
         st.error("Пожалуйста, выберите диапазон дат.")
 
