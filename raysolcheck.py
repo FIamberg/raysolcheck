@@ -35,9 +35,13 @@ def fetch_data(_date_from=None, _date_to=None):
         FROM ray_solana_parser
         """
         if _date_from and _date_to:
+            # Convert datetime objects to strings in the format expected by the database
+            date_from_str = _date_from.strftime('%Y-%m-%d %H:%M:%S')
+            date_to_str = _date_to.strftime('%Y-%m-%d %H:%M:%S')
+            
             query += " WHERE DATE BETWEEN %s AND %s"
             query += " ORDER BY DATE DESC"
-            df = pd.read_sql(query, engine, params=[_date_from, _date_to])
+            df = pd.read_sql(query, engine, params=[date_from_str, date_to_str])
         else:
             query += " ORDER BY DATE DESC"
             df = pd.read_sql(query, engine)
@@ -46,6 +50,7 @@ def fetch_data(_date_from=None, _date_to=None):
     except Exception as e:
         st.error(f"Ошибка при получении данных: {e}")
         return pd.DataFrame()  # Return an empty DataFrame on error
+
 
 def create_summary_table(df):
     # Check if necessary columns are in the DataFrame
