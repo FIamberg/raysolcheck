@@ -24,9 +24,14 @@ def fetch_data(_date_from=None, _date_to=None):
     engine = get_engine()  # Initialize the engine inside the function
     
     try:
+        # Explicitly select the required columns in the query
         query = """
         SELECT 
-            *
+            received_currency,
+            wallet_address,
+            swapped_value_USD,
+            swapped_currency,
+            DATE
         FROM ray_solana_parser
         """
         if _date_from and _date_to:
@@ -43,6 +48,12 @@ def fetch_data(_date_from=None, _date_to=None):
         return pd.DataFrame()  # Return an empty DataFrame on error
 
 def create_summary_table(df):
+    # Check if necessary columns are in the DataFrame
+    required_columns = {'received_currency', 'wallet_address', 'swapped_value_USD', 'swapped_currency'}
+    if not required_columns.issubset(df.columns):
+        st.warning("Некоторые необходимые столбцы отсутствуют в данных.")
+        return pd.DataFrame()  # Return an empty DataFrame if columns are missing
+
     buys = df[['received_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
         'received_currency': 'coin',
         'swapped_value_USD': 'volume'
@@ -83,6 +94,12 @@ def create_summary_table(df):
     return summary_pivot
 
 def create_wallet_summary(df, selected_coins):
+    # Check if necessary columns are in the DataFrame
+    required_columns = {'received_currency', 'wallet_address', 'swapped_value_USD', 'swapped_currency'}
+    if not required_columns.issubset(df.columns):
+        st.warning("Некоторые необходимые столбцы отсутствуют в данных.")
+        return pd.DataFrame()  # Return an empty DataFrame if columns are missing
+
     filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | (df['received_currency'].isin(selected_coins))]
     
     buys = filtered_df[filtered_df['received_currency'].isin(selected_coins)]
@@ -171,6 +188,10 @@ def main():
     if date_from and date_to:
         # Call fetch_data with only the date range parameters
         df = fetch_data(date_from, date_to)
+
+        # Debug: Display the columns in the DataFrame
+        st.write("Columns in the fetched DataFrame:", df.columns)
+        st.write(df.head())
 
         st.subheader(f"Сводная информация по монетам с {date_from} по {date_to}")
         summary_df = create_summary_table(df)
