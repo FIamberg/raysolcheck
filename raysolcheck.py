@@ -19,7 +19,7 @@ def get_engine():
         st.session_state.engine = init_engine()
     return st.session_state.engine
 
-@st.cache_data(ttl=5*60)
+@st.cache_data
 def fetch_data(date_from=None, date_to=None):
     # Initialize engine inside the function to avoid unhashable errors
     engine = get_engine()
