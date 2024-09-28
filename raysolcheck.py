@@ -20,13 +20,13 @@ def get_engine():
     return st.session_state.engine
 
 @st.cache_data(ttl=5*60)
-def fetch_data(engine, date_from=None, date_to=None):
+def fetch_data(date_from=None, date_to=None):
+    engine = get_engine()  # Инициализация движка внутри кэшируемой функции
     try:
         query = """
         SELECT 
             *
-        FROM ray_solana_parser 
-        where received_currency is not NULL
+        FROM ray_solana_parser
         """
 
         if date_from and date_to:
