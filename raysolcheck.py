@@ -21,14 +21,15 @@ def get_engine():
 
 @st.cache_data(ttl=5*60)
 def fetch_data(date_from=None, date_to=None):
-    engine = get_engine()  # Инициализация движка внутри кэшируемой функции
+    # Initialize engine inside the function to avoid unhashable errors
+    engine = get_engine()
+    
     try:
         query = """
         SELECT 
             *
         FROM ray_solana_parser
         """
-
         if date_from and date_to:
             query += " WHERE DATE BETWEEN %s AND %s"
             query += " ORDER BY DATE DESC"
