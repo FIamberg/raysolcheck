@@ -40,13 +40,13 @@ def fetch_data(_conn, date_from=None, date_to=None):
     return df
 
 def create_summary_table(df):
-    buys = df[['received_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
+    buys = df[['received_currency', 'name_wallet', 'swapped_value_USD']].rename(columns={
         'received_currency': 'coin',
         'swapped_value_USD': 'volume'
     })
     buys['transaction_type'] = 'buy'
 
-    sells = df[['swapped_currency', 'wallet_address', 'swapped_value_USD']].rename(columns={
+    sells = df[['swapped_currency', 'name_wallet', 'swapped_value_USD']].rename(columns={
         'swapped_currency': 'coin',
         'swapped_value_USD': 'volume'
     })
@@ -55,19 +55,19 @@ def create_summary_table(df):
     combined = pd.concat([buys, sells])
 
     summary = combined.groupby(['coin', 'transaction_type']).agg({
-        'wallet_address': 'nunique',
+        'name_wallet': 'nunique',
         'volume': 'sum'
     }).reset_index()
 
     summary_pivot = summary.pivot(index='coin', columns='transaction_type', 
-                                  values=['wallet_address', 'volume'])
+                                  values=['name_wallet', 'volume'])
     
     summary_pivot.columns = [f'{col[1]}_{col[0]}' for col in summary_pivot.columns]
     summary_pivot = summary_pivot.reset_index()
     
     column_mapping = {
-        'buy_wallet_address': 'buy_wallets',
-        'sell_wallet_address': 'sell_wallets',
+        'buy_name_wallet': 'buy_wallets',
+        'sell_name_wallet': 'sell_wallets',
         'buy_volume': 'buy_volume',
         'sell_volume': 'sell_volume'
     }
@@ -78,6 +78,29 @@ def create_summary_table(df):
     summary_pivot = summary_pivot.sort_values('buy_wallets', ascending=False)
     
     return summary_pivot
+
+def create_wallet_summary(df, selected_coins):
+    filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | (df['received_currency'].isin(selected_coins))]
+    
+    buys = filtered_df[filtered_df['received_currency'].isin(selected_coins)]
+    sells = filtered_df[filtered_df['swapped_currency'].isin(selected_coins)]
+    
+    buy_summary = buys.groupby('name_wallet').agg({
+        'received_currency': 'count',
+        'swapped_value_USD': 'sum'
+    }).rename(columns={'received_currency': 'unique_buy_transactions', 'swapped_value_USD': 'buy_volume'})
+    
+    sell_summary = sells.groupby('name_wallet').agg({
+        'swapped_currency': 'count',
+        'swapped_value_USD': 'sum'
+    }).rename(columns={'swapped_currency': 'unique_sell_transactions', 'swapped_value_USD': 'sell_volume'})
+    
+    wallet_summary = pd.merge(buy_summary, sell_summary, on='name_wallet', how='outer').fillna(0)
+    wallet_summary = wallet_summary.reset_index()
+    
+    wallet_summary['wallet_link'] = wallet_summary['name_wallet'].apply(lambda x: f"https://dexcheck.ai/app/wallet-analyzer/{x}")
+    
+    return wallet_summary
 
 def create_wallet_summary(df, selected_coins):
     filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | (df['received_currency'].isin(selected_coins))]
@@ -114,6 +137,11 @@ def get_last_2_hours_range():
     start_date = end_date - datetime.timedelta(hours=2)
     return start_date, end_date
 
+def filter_by_wallets(df, selected_wallets):
+    if selected_wallets:
+        return df[df['name_wallet'].isin(selected_wallets)]
+    return df
+
 def main():
     st.title("Ray_Sol Parser Dashboard")
 
@@ -125,29 +153,32 @@ def main():
     if st.sidebar.button("Последние 2 часа"):
         start_date, end_date = get_last_2_hours_range()
         update_date_range(start_date, end_date)
-        #st.rerun()
         
     if st.sidebar.button("Последние 6 часов"):
         end_date = get_current_time_with_offset()
         start_date = end_date - datetime.timedelta(hours=6)
         update_date_range(start_date, end_date)
-        #st.rerun()
+
     if st.sidebar.button("Последние 24 часа"):
         end_date = get_current_time_with_offset()
         start_date = end_date - datetime.timedelta(hours=25)
         update_date_range(start_date, end_date)
+        
     if st.sidebar.button("Последние 3 дня"):
         end_date = get_current_time_with_offset()
         start_date = end_date - datetime.timedelta(days=3, hours=1)
         update_date_range(start_date, end_date)
+        
     if st.sidebar.button("Последние 7 дней"):
         end_date = get_current_time_with_offset()
         start_date = end_date - datetime.timedelta(days=7, hours=1)
         update_date_range(start_date, end_date)
+        
     if st.sidebar.button("Текущий месяц"):
         end_date = get_current_time_with_offset()
         start_date = end_date.replace(day=1, hour=0, minute=0, second=0) - datetime.timedelta(hours=1)
         update_date_range(start_date, end_date)
+        
     if st.sidebar.button("Все время"):
         end_date = get_current_time_with_offset()
         start_date = datetime.datetime(2000, 1, 1)
@@ -168,6 +199,18 @@ def main():
     if date_from and date_to:
         conn = get_connection()
         df = fetch_data(conn, date_from, date_to)
+        
+        # Добавляем мультиселект для кошельков в сайдбар
+        st.sidebar.subheader("Фильтр по кошелькам")
+        all_wallets = sorted(df['name_wallet'].unique().tolist())
+        selected_wallets = st.sidebar.multiselect(
+            "Выберите кошельки",
+            options=all_wallets,
+            default=[]
+        )
+        
+        # Применяем фильтр по кошелькам
+        df = filter_by_wallets(df, selected_wallets)
 
         st.subheader(f"Сводная информация по монетам с {date_from} по {date_to}")
         summary_df = create_summary_table(df)
@@ -202,8 +245,9 @@ def main():
                 column_config={
                     "wallet_address": "Кошелек",
                     "wallet_link": st.column_config.LinkColumn(
-                    label="Анализ кошелька", 
-                    display_text="Link",),
+                        label="Анализ кошелька", 
+                        display_text="Link"
+                    ),
                     "unique_buy_transactions": "Уникальные покупки",
                     "buy_volume": "Объем покупок",
                     "unique_sell_transactions": "Уникальные продажи",
