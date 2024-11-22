@@ -47,46 +47,74 @@ def fetch_data(_conn, date_from=None, date_to=None):
     return df
 
 def create_summary_table(df):
-    buys = df[['received_currency', 'name_wallet', 'swapped_value_USD']].rename(columns={
-        'received_currency': 'coin',
-        'swapped_value_USD': 'volume'
-    })
-    buys['transaction_type'] = 'buy'
+    try:
+        buys = df[['received_currency', 'name_wallet', 'swapped_value_USD']].rename(columns={
+            'received_currency': 'coin',
+            'swapped_value_USD': 'volume'
+        })
+        buys['transaction_type'] = 'buy'
 
-    sells = df[['swapped_currency', 'name_wallet', 'swapped_value_USD']].rename(columns={
-        'swapped_currency': 'coin',
-        'swapped_value_USD': 'volume'
-    })
-    sells['transaction_type'] = 'sell'
+        sells = df[['swapped_currency', 'name_wallet', 'swapped_value_USD']].rename(columns={
+            'swapped_currency': 'coin',
+            'swapped_value_USD': 'volume'
+        })
+        sells['transaction_type'] = 'sell'
 
-    combined = pd.concat([buys, sells])
-    # Удаляем строки с пустыми значениями монет
-    combined = combined[combined['coin'] != '']
+        combined = pd.concat([buys, sells])
+        # Удаляем строки с пустыми значениями монет
+        combined = combined[combined['coin'] != '']
 
-    summary = combined.groupby(['coin', 'transaction_type']).agg({
-        'name_wallet': 'nunique',
-        'volume': 'sum'
-    }).reset_index()
+        summary = combined.groupby(['coin', 'transaction_type']).agg({
+            'name_wallet': 'nunique',
+            'volume': 'sum'
+        }).reset_index()
 
-    summary_pivot = summary.pivot(index='coin', columns='transaction_type', 
-                                values=['name_wallet', 'volume'])
-    
-    summary_pivot.columns = [f'{col[1]}_{col[0]}' for col in summary_pivot.columns]
-    summary_pivot = summary_pivot.reset_index()
-    
-    column_mapping = {
-        'buy_name_wallet': 'buy_wallets',
-        'sell_name_wallet': 'sell_wallets',
-        'buy_volume': 'buy_volume',
-        'sell_volume': 'sell_volume'
-    }
-    summary_pivot = summary_pivot.rename(columns=column_mapping)
-    
-    summary_pivot = summary_pivot.fillna(0)
-    summary_pivot = summary_pivot.sort_values('buy_wallets', ascending=False)
-    
-    return summary_pivot
+        # Создаем сводную таблицу с явным указанием всех столбцов
+        summary_pivot = pd.pivot_table(
+            summary,
+            index='coin',
+            columns='transaction_type',
+            values=['name_wallet', 'volume'],
+            fill_value=0
+        ).reset_index()
 
+        # Переименовываем столбцы
+        summary_pivot.columns = ['coin'] + [
+            f"{col[1].lower()}_{col[0]}" 
+            for col in summary_pivot.columns if col[0] != 'coin'
+        ]
+
+        # Убеждаемся, что все необходимые столбцы существуют
+        required_columns = ['coin', 'buy_name_wallet', 'sell_name_wallet', 'buy_volume', 'sell_volume']
+        for col in required_columns:
+            if col not in summary_pivot.columns:
+                summary_pivot[col] = 0
+
+        # Переименовываем столбцы в нужный формат
+        column_mapping = {
+            'buy_name_wallet': 'buy_wallets',
+            'sell_name_wallet': 'sell_wallets',
+            'buy_volume': 'buy_volume',
+            'sell_volume': 'sell_volume'
+        }
+        summary_pivot = summary_pivot.rename(columns=column_mapping)
+
+        # Сортируем по количеству кошельков покупки (если столбец существует)
+        if 'buy_wallets' in summary_pivot.columns:
+            summary_pivot = summary_pivot.sort_values('buy_wallets', ascending=False)
+
+        # Приводим числовые столбцы к float
+        numeric_columns = ['buy_wallets', 'sell_wallets', 'buy_volume', 'sell_volume']
+        for col in numeric_columns:
+            if col in summary_pivot.columns:
+                summary_pivot[col] = summary_pivot[col].astype(float)
+
+        return summary_pivot
+
+    except Exception as e:
+        st.error(f"Ошибка при создании сводной таблицы: {str(e)}")
+        # Возвращаем пустую таблицу с нужными столбцами
+        return pd.DataFrame(columns=['coin', 'buy_wallets', 'sell_wallets', 'buy_volume', 'sell_volume'])
 def create_wallet_summary(df, selected_coins):
     filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | 
                     (df['received_currency'].isin(selected_coins))]
