@@ -5,6 +5,7 @@ import datetime
 
 st.set_page_config(layout="wide")
 
+# Константа для смещения времени
 TIME_OFFSET = datetime.timedelta(hours=3)
 
 def init_connection():
@@ -36,11 +37,12 @@ def fetch_data(_conn, date_from=None, date_to=None):
         query += " ORDER BY DATE desc"
         df = pd.read_sql(query, _conn)
     
-    # Здесь заменяем None значения на пустую строку
+    # Заменяем None значения
     df['name_wallet'] = df['name_wallet'].fillna('')
     df['swapped_currency'] = df['swapped_currency'].fillna('')
     df['received_currency'] = df['received_currency'].fillna('')
     df['swapped_value_USD'] = df['swapped_value_USD'].fillna(0)
+    df['wallet_address'] = df['wallet_address'].fillna('')
     
     return df
 
@@ -86,7 +88,8 @@ def create_summary_table(df):
     return summary_pivot
 
 def create_wallet_summary(df, selected_coins):
-    filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | (df['received_currency'].isin(selected_coins))]
+    filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | 
+                    (df['received_currency'].isin(selected_coins))]
     
     buys = filtered_df[filtered_df['received_currency'].isin(selected_coins)]
     sells = filtered_df[filtered_df['swapped_currency'].isin(selected_coins)]
@@ -94,14 +97,17 @@ def create_wallet_summary(df, selected_coins):
     buy_summary = buys.groupby('wallet_address').agg({
         'received_currency': 'count',
         'swapped_value_USD': 'sum'
-    }).rename(columns={'received_currency': 'unique_buy_transactions', 'swapped_value_USD': 'buy_volume'})
+    }).rename(columns={'received_currency': 'unique_buy_transactions', 
+                     'swapped_value_USD': 'buy_volume'})
     
     sell_summary = sells.groupby('wallet_address').agg({
         'swapped_currency': 'count',
         'swapped_value_USD': 'sum'
-    }).rename(columns={'swapped_currency': 'unique_sell_transactions', 'swapped_value_USD': 'sell_volume'})
+    }).rename(columns={'swapped_currency': 'unique_sell_transactions', 
+                     'swapped_value_USD': 'sell_volume'})
     
-    wallet_summary = pd.merge(buy_summary, sell_summary, on='wallet_address', how='outer').fillna(0)
+    wallet_summary = pd.merge(buy_summary, sell_summary, 
+                            on='wallet_address', how='outer').fillna(0)
     wallet_summary = wallet_summary.reset_index()
     
     wallet_summary['wallet_link'] = wallet_summary['wallet_address'].apply(
@@ -115,15 +121,70 @@ def filter_by_wallets(df, selected_wallets):
         return df[df['name_wallet'].isin(selected_wallets)]
     return df
 
-# ... [остальные вспомогательные функции остаются без изменений] ...
+def update_date_range(start_date, end_date):
+    st.session_state.date_range = [start_date, end_date]
+
+def get_current_time_with_offset():
+    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0) + TIME_OFFSET
+
+def get_last_2_hours_range():
+    end_date = get_current_time_with_offset()
+    start_date = end_date - datetime.timedelta(hours=2)
+    return start_date, end_date
 
 def main():
     st.title("Ray_Sol Parser Dashboard")
 
+    # Инициализация date_range последними 2 часами по умолчанию
     if 'date_range' not in st.session_state:
         st.session_state.date_range = get_last_2_hours_range()
 
-    # ... [код с кнопками выбора дат остается без изменений] ...
+    st.sidebar.subheader("Быстрый выбор дат")
+    if st.sidebar.button("Последние 2 часа"):
+        start_date, end_date = get_last_2_hours_range()
+        update_date_range(start_date, end_date)
+        
+    if st.sidebar.button("Последние 6 часов"):
+        end_date = get_current_time_with_offset()
+        start_date = end_date - datetime.timedelta(hours=6)
+        update_date_range(start_date, end_date)
+
+    if st.sidebar.button("Последние 24 часа"):
+        end_date = get_current_time_with_offset()
+        start_date = end_date - datetime.timedelta(hours=25)
+        update_date_range(start_date, end_date)
+        
+    if st.sidebar.button("Последние 3 дня"):
+        end_date = get_current_time_with_offset()
+        start_date = end_date - datetime.timedelta(days=3, hours=1)
+        update_date_range(start_date, end_date)
+        
+    if st.sidebar.button("Последние 7 дней"):
+        end_date = get_current_time_with_offset()
+        start_date = end_date - datetime.timedelta(days=7, hours=1)
+        update_date_range(start_date, end_date)
+        
+    if st.sidebar.button("Текущий месяц"):
+        end_date = get_current_time_with_offset()
+        start_date = end_date.replace(day=1, hour=0, minute=0, second=0) - datetime.timedelta(hours=1)
+        update_date_range(start_date, end_date)
+        
+    if st.sidebar.button("Все время"):
+        end_date = get_current_time_with_offset()
+        start_date = datetime.datetime(2000, 1, 1)
+        update_date_range(start_date, end_date)
+
+    date_from = st.sidebar.date_input("Начальная дата", st.session_state.date_range[0])
+    date_to = st.sidebar.date_input("Конечная дата", st.session_state.date_range[1])
+
+    time_from = st.sidebar.time_input("Время начала", st.session_state.date_range[0].time())
+    time_to = st.sidebar.time_input("Время окончания", st.session_state.date_range[1].time())
+
+    date_from = datetime.datetime.combine(date_from, time_from)
+    date_to = datetime.datetime.combine(date_to, time_to)
+
+    if date_from != st.session_state.date_range[0] or date_to != st.session_state.date_range[1]:
+        st.session_state.date_range = [date_from, date_to]
 
     if date_from and date_to:
         conn = get_connection()
@@ -185,9 +246,9 @@ def main():
             )
 
             st.subheader(f"Детальные данные с {date_from} по {date_to}")
-            st.dataframe(df[(df['swapped_currency'].isin(selected_coins)) | 
-                          (df['received_currency'].isin(selected_coins))], 
-                        use_container_width=True)
+            filtered_df = df[(df['swapped_currency'].isin(selected_coins)) | 
+                          (df['received_currency'].isin(selected_coins))]
+            st.dataframe(filtered_df, use_container_width=True)
         else:
             st.warning("Пожалуйста, выберите хотя бы одну монету для отображения детальной информации.")
 
